@@ -1,37 +1,42 @@
+import 'dotenv/config';
 import express from 'express';
 import { MongoClient } from 'mongodb';
-import dotenv from 'dotenv';
-
-dotenv.config();
 
 const app = express();
-app.use(express.json());
-app.use(express.static('public'));  // serve your HTML files
+const PORT = process.env.PORT || 3000;
+
+// MongoDB connection
+const client = new MongoClient(process.env.MONGODB_URI);
+let db;
 
 // Connect to MongoDB
-const client = new MongoClient(process.env.MONGO_URI);
-
-async function start() {
+async function connectDB() {
+  try {
     await client.connect();
-    console.log("Connected to MongoDB");
-
-    const db = client.db(process.env.DB_NAME);
-    const moviesCollection = db.collection('movies');
-
-    // --- API Endpoint ---
-    app.get('/api/movies', async (req, res) => {
-        try {
-            const movies = await moviesCollection.find().toArray();
-            res.json(movies);
-        } catch (err) {
-            res.status(500).json({ error: 'Database query failed' });
-        }
-    });
-
-    // Start the server
-    app.listen(3000, () => {
-        console.log("Server running on http://localhost:3000");
-    });
+    db = client.db('myDatabase');
+    console.log('Connected to MongoDB');
+  } catch (error) {
+    console.error('MongoDB connection error:', error);
+  }
 }
 
-start().catch(console.error);
+connectDB();
+
+// Serve static files
+app.use(express.static('public'));
+
+// API endpoint to get data
+app.get('/api/items', async (req, res) => {
+  try {
+    const collection = db.collection('items');
+    const items = await collection.find({}).toArray();
+    res.json(items);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch data' });
+  }
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+});
