@@ -1,3 +1,4 @@
+//import packages to connect to MongoDB and connect to server
 import 'dotenv/config';
 import express from 'express';
 import { MongoClient } from 'mongodb';
@@ -5,11 +6,15 @@ import { MongoClient } from 'mongodb';
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Parse JSON request bodies
+app.use(express.json());
+
 // MongoDB connection
 const client = new MongoClient(process.env.MONGODB_URI);
 let db;
 
 // Connect to MongoDB
+//THIS SECTION WAS DEBUGGED BY CLAUDE
 async function connectDB() {
   try {
     await client.connect();
@@ -26,9 +31,151 @@ async function connectDB() {
   }
 }
 
+//establish connection
 connectDB();
 
-// ⭐ API ROUTES FIRST - Define API routes BEFORE static files
+
+// Login API endpoint
+app.post('/api/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    
+    console.log('Login attempt for:', username);
+    
+    if (!username || !password) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Username and password are required' 
+      });
+    }
+    
+    const collection = db.collection('users');
+    
+    // Find user by email (username is their email)
+    const user = await collection.findOne({ email: username });
+    
+    if (!user) {
+      console.log('User not found:', username);
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Invalid username or password' 
+      });
+    }
+    
+    // For demonstration accept any password
+    
+    console.log('Login successful for:', user.name);
+    
+    // Return user information (excluding sensitive data)
+    res.json({
+      success: true,
+      userId: user.userId,
+      username: user.name,
+      email: user.email,
+      age: user.age,
+      favorite_genres: user.favorite_genres,
+      token: 'demo_token_' + user.userId
+    });
+    
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error during login' 
+    });
+  }
+});
+
+// Verify token/session endpoint
+//THIS SECTION WAS DEBUGGED BY CLAUDE
+app.post('/api/verify', async (req, res) => {
+  try {
+    const { email, token } = req.body;
+    
+    if (!email || !token) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Email and token required' 
+      });
+    }
+    
+    const collection = db.collection('users');
+    const user = await collection.findOne({ email: email });
+    
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'User not found' 
+      });
+    }
+    
+
+    // just check if token exists and return data
+    if (token.startsWith('demo_token_') || token.length > 100) {
+      res.json({
+        success: true,
+        valid: true,
+        user: {
+          userId: user.userId,
+          name: user.name,
+          email: user.email,
+          age: user.age,
+          favorite_genres: user.favorite_genres
+        }
+      });
+    } else {
+      res.status(401).json({
+        success: false,
+        valid: false,
+        message: 'Invalid token'
+      });
+    }
+    
+  } catch (error) {
+    console.error('Verification error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error during verification' 
+    });
+  }
+});
+
+// Get user profile by email
+app.get('/api/user/:email', async (req, res) => {
+  try {
+    const email = req.params.email;
+    
+    const collection = db.collection('users');
+    const user = await collection.findOne({ email: email });
+    
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'User not found' 
+      });
+    }
+    
+    // Return user data (excluding sensitive info)
+    res.json({
+      success: true,
+      userId: user.userId,
+      name: user.name,
+      email: user.email,
+      age: user.age,
+      favorite_genres: user.favorite_genres
+    });
+    
+  } catch (error) {
+    console.error('Error fetching user:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error' 
+    });
+  }
+});
+
+// Get media items with pagination
+//THIS SECTION WAS DEBUGGED BY CLAUDE (Couldn't get pagination to work properly)
 app.get('/api/items', async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;

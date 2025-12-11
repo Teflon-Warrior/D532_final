@@ -31,9 +31,9 @@
   </div>
 
   <script>
-    // Function to delete a cookie
+    // Function to delete a cookie by setting age to 0
     function deleteCookie(name) {
-      document.cookie = name + '=; Max-Age=-99999999; path=/';
+      document.cookie = name + '=; Max-Age=0; path=/';
     }
 
     // Delete all RecFlix cookies
@@ -48,13 +48,13 @@
       
       console.log('All cookies cleared. Redirecting to login page...');
       
-      // Redirect to login page after a brief delay
+      // Redirect to login page 
       setTimeout(function() {
         window.location.href = 'login.html';
       }, 1000);
     }
 
-    // Execute logout immediately when page loads
+    // Finish logout
     logout();
   </script>
 </body>

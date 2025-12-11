@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RecFlix - Account</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+  <nav class="navbar navbar-dark bg-primary">
+    <div class="container-fluid">
+      <span class="navbar-brand mb-0 h1">RecFlix</span>
+      <div class="d-flex align-items-center">
+        <span class="text-white me-3" id="usernameDisplay"></span>
+        <div class="dropdown">
+          <button class="btn btn-link text-white p-0 d-flex align-items-center" type="button" id="accountDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+            <img src="Images/profile.png" alt="Account" class="rounded-circle me-2" width="30" height="30">
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="accountDropdown">
+            <li><a class="dropdown-item" href="account.html"><i class="fas fa-user me-2"></i>Account</a></li>
+            <li><a class="dropdown-item" href="index.html"><i class="fas fa-home me-2"></i>Home</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item" href="#" onclick="logout(); return false;"><i class="fas fa-sign-out-alt me-2"></i>Log Out</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container mt-5">
+    <div class="row justify-content-center">
+      <div class="col-lg-8">
+        <h2 class="mb-4">My Account</h2>
+        
+        <!-- Loading Spinner -->
+        <div id="loadingSpinner" class="text-center my-5">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
+          <p class="mt-2 text-muted">Loading your profile...</p>
+        </div>
+
+        <!-- User Profile Card -->
+        <div id="profileCard" style="display: none;">
+          <div class="card shadow-sm mb-4">
+            <div class="card-body">
+              <div class="d-flex align-items-center mb-4">
+                <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 80px; height: 80px; font-size: 32px;">
+                  <i class="fas fa-user"></i>
+                </div>
+                <div>
+                  <h3 class="mb-1" id="userName">Loading...</h3>
+                  <p class="text-muted mb-0" id="userEmail">email@example.com</p>
+                </div>
+              </div>
+
+              <hr>
+
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <div class="card bg-light">
+                    <div class="card-body">
+                      <h6 class="text-muted mb-2"><i class="fas fa-id-card me-2"></i>User ID</h6>
+                      <h4 class="mb-0" id="userId">-</h4>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="col-md-6 mb-3">
+                  <div class="card bg-light">
+                    <div class="card-body">
+                      <h6 class="text-muted mb-2"><i class="fas fa-birthday-cake me-2"></i>Age</h6>
+                      <h4 class="mb-0"><span id="userAge">-</span> years old</h4>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card bg-light mt-3">
+                <div class="card-body">
+                  <h6 class="text-muted mb-3"><i class="fas fa-heart me-2"></i>Favorite Genres</h6>
+                  <div id="favoriteGenres" class="d-flex flex-wrap gap-2">
+                    <!-- Genre tiles will be loaded here -->
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+
+        <!-- Error Message -->
+        <div id="errorMessage" class="alert alert-danger" style="display: none;">
+          <i class="fas fa-exclamation-triangle me-2"></i>
+          <span id="errorText">Failed to load profile</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  
+  <script>
+    // Cookie utility functions
+    function getCookie(name) {
+      const nameEQ = name + "=";
+      const ca = document.cookie.split(';');
+      for(let i = 0; i < ca.length; i++) {
+        let c = ca[i];
+        while (c.charAt(0) == ' ') c = c.substring(1, c.length);
+        if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length, c.length);
+      }
+      return null;
+    }
+
+    function deleteCookie(name) {
+      document.cookie = name + '=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+    }
+
+    function logout() {
+      // Clear all cookies
+      const cookies = ['recflix_user', 'recflix_email', 'recflix_token', 
+                      'recflix_user_id', 'recflix_age', 'recflix_genres',
+                      'recflix_given_name', 'recflix_family_name', 'recflix_picture'];
+      cookies.forEach(cookie => deleteCookie(cookie));
+      
+      // Redirect to login
+      window.location.href = 'login.html';
+    }
+
+    // Load user profile
+    async function loadUserProfile() {
+      const email = getCookie('recflix_email');
+      const token = getCookie('recflix_token');
+      
+      // Check if logged in
+      if (!email || !token) {
+        window.location.href = 'login.html';
+        return;
+      }
+
+      // Set username in navbar
+      const username = getCookie('recflix_user');
+      if (username) {
+        document.getElementById('usernameDisplay').textContent = username;
+      }
+
+      try {
+        // Fetch user data from API
+        const response = await fetch(`/api/user/${encodeURIComponent(email)}`);
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+          // Hide loading spinner
+          document.getElementById('loadingSpinner').style.display = 'none';
+          
+          // Show profile card
+          document.getElementById('profileCard').style.display = 'block';
+
+          // Populate user information
+          document.getElementById('userName').textContent = data.name;
+          document.getElementById('userEmail').textContent = data.email;
+          document.getElementById('userId').textContent = data.userId;
+          document.getElementById('userAge').textContent = data.age;
+
+          // Display favorite genres as badges
+          const genresContainer = document.getElementById('favoriteGenres');
+          genresContainer.innerHTML = '';
+          
+          if (data.favorite_genres && data.favorite_genres.length > 0) {
+            data.favorite_genres.forEach(genre => {
+              const badge = document.createElement('span');
+              badge.className = 'badge bg-primary fs-6';
+              badge.textContent = genre;
+              genresContainer.appendChild(badge);
+            });
+          } else {
+            genresContainer.innerHTML = '<span class="text-muted">No favorite genres set</span>';
+          }
+
+        } else {
+          throw new Error(data.message || 'Failed to load profile');
+        }
+
+      } catch (error) {
+        console.error('Error loading profile:', error);
+        
+        // Hide loading spinner
+        document.getElementById('loadingSpinner').style.display = 'none';
+        
+        // Show error message
+        document.getElementById('errorMessage').style.display = 'block';
+        document.getElementById('errorText').textContent = error.message;
+      }
+    }
+
+    // Load profile when page loads
+    loadUserProfile();
+  </script>
+</body>
+</html>
