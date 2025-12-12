@@ -143,10 +143,17 @@ app.post('/api/verify', async (req, res) => {
 // Get user profile by email
 app.get('/api/user/:email', async (req, res) => {
   try {
-    const email = req.params.email;
+    const identifier = req.params.email; // can be email or userId
     
     const collection = db.collection('users');
-    const user = await collection.findOne({ email: email });
+    const numericId = parseInt(identifier, 10);
+    const user = await collection.findOne({
+      $or: [
+        { email: identifier },
+        { userId: identifier },
+        (!Number.isNaN(numericId) ? { userId: numericId } : null)
+      ].filter(Boolean)
+    });
     
     if (!user) {
       return res.status(404).json({ 
@@ -171,6 +178,187 @@ app.get('/api/user/:email', async (req, res) => {
       success: false, 
       message: 'Server error' 
     });
+  }
+});
+
+// Get recommendations for a user
+app.get('/api/user/:email/recommendations', async (req, res) => {
+  try {
+    const identifier = req.params.email; // can be email or userId
+
+    if (!db) {
+      return res.status(503).json({
+        success: false,
+        message: 'Database not initialized yet'
+      });
+    }
+
+    const users = db.collection('users');
+    const media = db.collection('media');
+    const recommendations = db.collection('recommendations');
+
+    // Find the user first to derive their identifiers and preferences
+    const numericId = parseInt(identifier, 10);
+    const user = await users.findOne({
+      $or: [
+        { email: identifier },
+        { userId: identifier },
+        (!Number.isNaN(numericId) ? { userId: numericId } : null)
+      ].filter(Boolean)
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Try to load explicit recommendations stored for this user.
+    // Current schema example:
+    // { recId, userId, generated_at, movie_list: ['s34', ...] }
+    const explicitRec = await recommendations.findOne({
+      $or: [
+        { userId: user.userId },
+        { email: user.email }
+      ]
+    });
+
+    const recIdsRaw = Array.isArray(explicitRec?.movie_list)
+      ? explicitRec.movie_list
+      : Array.isArray(explicitRec?.mediaIds)
+        ? explicitRec.mediaIds
+        : Array.isArray(explicitRec?.media_ids)
+          ? explicitRec.media_ids
+          : Array.isArray(explicitRec?.recommendations)
+            ? explicitRec.recommendations
+            : [];
+
+    const recIds = recIdsRaw.map(id => String(id));
+    const recIdNums = recIds
+      .map(id => parseInt(String(id).replace(/\D+/g, ''), 10))
+      .filter(n => !Number.isNaN(n));
+
+    let recItems = [];
+
+    if (recIds.length > 0) {
+      // Fetch the referenced media items; support string or numeric ids
+      recItems = await media
+        .find({
+          $or: [
+            { media_id: { $in: recIds } },
+            { media_id: { $in: recIdNums } },
+            { id: { $in: recIdNums } }
+          ]
+        })
+        .limit(20)
+        .toArray();
+    }
+
+    // Fallback: if no explicit recs or none matched, use favorite genres
+    if (recItems.length === 0 && Array.isArray(user.favorite_genres) && user.favorite_genres.length > 0) {
+      recItems = await media
+        .find({ genre: { $in: user.favorite_genres } })
+        .sort({ rating: -1 })
+        .limit(20)
+        .toArray();
+    }
+
+    // Final fallback: top-rated overall if still empty
+    if (recItems.length === 0) {
+      recItems = await media
+        .find({})
+        .sort({ rating: -1 })
+        .limit(12)
+        .toArray();
+    }
+
+    console.log(`Recommendations -> user ${user.email}, ids requested: ${recIds.length}, numeric ids: ${recIdNums.length}, items returned: ${recItems.length}`);
+
+    res.json({
+      success: true,
+      userId: user.userId,
+      email: user.email,
+      recommendations: recItems
+    });
+  } catch (error) {
+    console.error('Recommendations error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error fetching recommendations'
+    });
+  }
+});
+
+// Get a single recommendation for a user (one item)
+app.get('/api/user/:email/recommendation', async (req, res) => {
+  try {
+    const identifier = req.params.email; // can be email or userId
+
+    if (!db) {
+      return res.status(503).json({ success: false, message: 'Database not initialized yet' });
+    }
+
+    const users = db.collection('users');
+    const media = db.collection('media');
+    const recommendations = db.collection('recommendations');
+
+    const numericId = parseInt(identifier, 10);
+    const user = await users.findOne({
+      $or: [
+        { email: identifier },
+        { userId: identifier },
+        (!Number.isNaN(numericId) ? { userId: numericId } : null)
+      ].filter(Boolean)
+    });
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Use aggregation to retrieve one recommended item via movie_list -> media lookup
+    const pipeline = [
+      { $match: { userId: user.userId } },
+      { $unwind: '$movie_list' },
+      {
+        $lookup: {
+          from: 'media',
+          localField: 'movie_list',
+          foreignField: 'media_id',
+          as: 'movie_info'
+        }
+      },
+      { $unwind: '$movie_info' },
+      {
+        $project: {
+          _id: 0,
+          media_id: '$movie_info.media_id',
+          title: '$movie_info.title',
+          genre: '$movie_info.genre',
+          type: '$movie_info.type',
+          description: '$movie_info.description',
+          rating: '$movie_info.rating',
+          duration: '$movie_info.duration'
+        }
+      },
+      { $limit: 1 }
+    ];
+
+    const aggRes = await recommendations.aggregate(pipeline).toArray();
+    let item = aggRes[0] || null;
+
+    // Fallbacks if no explicit recommendation matched
+    if (!item && Array.isArray(user.favorite_genres) && user.favorite_genres.length > 0) {
+      item = await media.findOne({ genre: { $in: user.favorite_genres } }, { sort: { rating: -1 } });
+    }
+    if (!item) {
+      item = await media.findOne({}, { sort: { rating: -1 } });
+    }
+
+    res.json({ success: true, recommendation: item });
+  } catch (error) {
+    console.error('Single recommendation error:', error);
+    res.status(500).json({ success: false, message: 'Server error fetching single recommendation' });
   }
 });
 
