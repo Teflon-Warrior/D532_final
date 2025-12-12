@@ -14,7 +14,6 @@ const client = new MongoClient(process.env.MONGODB_URI);
 let db;
 
 // Connect to MongoDB
-//THIS SECTION WAS DEBUGGED BY CLAUDE
 async function connectDB() {
   try {
     await client.connect();
@@ -363,7 +362,6 @@ app.get('/api/user/:email/recommendation', async (req, res) => {
 });
 
 // Get media items with pagination
-//THIS SECTION WAS DEBUGGED BY CLAUDE (Couldn't get pagination to work properly)
 app.get('/api/items', async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
