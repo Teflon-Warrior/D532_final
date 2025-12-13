@@ -272,7 +272,17 @@ app.get('/api/user/:email/recommendations', async (req, res) => {
         .toArray();
     }
 
-    console.log(`Recommendations -> user ${user.email}, ids requested: ${recIds.length}, numeric ids: ${recIdNums.length}, items returned: ${recItems.length}`);
+    // Deduplicate by media_id to avoid repeated entries
+    const seen = new Set();
+    recItems = recItems.filter(it => {
+      const key = it.media_id ?? it.id ?? it._id?.toString();
+      if (!key) return true;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    console.log(`Recommendations -> user ${user.email}, ids requested: ${recIds.length}, numeric ids: ${recIdNums.length}, items returned: ${recItems.length}, unique: ${recItems.length}`);
 
     res.json({
       success: true,

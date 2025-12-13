@@ -93,6 +93,9 @@
                     </div>
                     <div class="d-flex align-items-center gap-2">
                       <span class="badge bg-primary" id="recCount" style="display: none;"></span>
+                      <select class="form-select form-select-sm" id="genreFilter" style="width:auto">
+                        <option value="">All genres</option>
+                      </select>
                       <button class="btn btn-sm btn-outline-primary" id="getOneRecBtn">Get Recommendation</button>
                     </div>
                   </div>
@@ -178,7 +181,9 @@
       grid.appendChild(col);
     }
 
-    async function loadRecommendations(userId, email) {
+      let lastRecommendations = [];
+
+      async function loadRecommendations(userId, email) {
       const statusEl = document.getElementById('recStatus');
       const grid = document.getElementById('recommendationsGrid');
       const countBadge = document.getElementById('recCount');
@@ -204,7 +209,17 @@
         const data = await response.json();
 
         if (response.ok && data.success) {
-          const recs = Array.isArray(data.recommendations) ? data.recommendations : [];
+            let recs = Array.isArray(data.recommendations) ? data.recommendations : [];
+
+            // Deduplicate by media_id on the client side too (defense in depth)
+            const seen = new Set();
+            recs = recs.filter(it => {
+              const key = it.media_id ?? it.id ?? it._id;
+              if (!key) return true;
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
 
           if (recs.length === 0) {
             statusEl.textContent = 'No recommendations yet. Add your preferences to get personalized picks.';
@@ -219,7 +234,10 @@
             countBadge.style.display = 'inline-block';
           }
 
-          recs.slice(0, 12).forEach(item => renderRecommendation(item, grid));
+            // Save and render
+            lastRecommendations = recs.slice();
+            populateGenreFilter(recs);
+            renderRecommendations(recs, grid);
         } else {
           throw new Error(data.message || 'Failed to load recommendations');
         }
@@ -229,6 +247,37 @@
         grid.innerHTML = '<div class="col-12"><div class="alert alert-warning">Please refresh or try again later.</div></div>';
       }
     }
+
+      function renderRecommendations(items, grid) {
+        grid.innerHTML = '';
+        items.slice(0, 12).forEach(item => renderRecommendation(item, grid));
+      }
+
+      function populateGenreFilter(items) {
+        const select = document.getElementById('genreFilter');
+        const genres = new Set();
+        items.forEach(i => {
+          if (typeof i.genre === 'string') {
+            i.genre.split(',').map(s => s.trim()).forEach(g => { if (g) genres.add(g); });
+          }
+        });
+        const current = select.value;
+        select.innerHTML = '<option value="">All genres</option>' + Array.from(genres).sort().map(g => `<option value="${g}">${g}</option>`).join('');
+        if (Array.from(genres).includes(current)) {
+          select.value = current;
+        }
+      }
+
+      document.getElementById('genreFilter').addEventListener('change', (e) => {
+        const grid = document.getElementById('recommendationsGrid');
+        const value = e.target.value;
+        if (!value) {
+          renderRecommendations(lastRecommendations, grid);
+        } else {
+          const filtered = lastRecommendations.filter(i => typeof i.genre === 'string' && i.genre.split(',').map(s => s.trim()).includes(value));
+          renderRecommendations(filtered, grid);
+        }
+      });
 
       // Wire up single recommendation button
       const getOneBtn = document.getElementById('getOneRecBtn');
